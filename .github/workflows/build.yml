@@ -1,0 +1,65 @@
+name: Build Chromium Android (Matrix)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [base, components, content, chrome, net, gpu, media, ui, v8, weblayer]
+      fail-fast: false  # Không hủy tất cả job nếu một job fail
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y python3 git lsb-release sudo ccache
+          ccache -M 10G  # Dùng cache 10GB để tăng tốc build
+
+      - name: Enable Swap (Avoid Out of Memory)
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: chromium-ccache-${{ github.run_id }}
+          restore-keys: |
+            chromium-ccache-
+
+      - name: Setup depot_tools
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$GITHUB_WORKSPACE/depot_tools" >> $GITHUB_PATH
+
+      - name: Fetch Chromium source
+        run: |
+          fetch --nohooks android
+          cd src
+          gclient sync --nohooks --jobs 16
+          ./build/install-build-deps-android.sh
+          gclient runhooks
+
+      - name: Generate build files
+        run: |
+          cd src
+          gn gen out/Default --args='target_os="android" target_cpu="arm64"'
+
+      - name: Build module - ${{ matrix.module }}
+        run: |
+          cd src
+          ninja -C out/Default -j4 ${{ matrix.module }}

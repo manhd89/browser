@@ -1,4 +1,4 @@
-name: Build Chromium Android (Matrix)
+name: Build Chromium Android with Adblock Plus
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         module: [base, components, content, chrome, net, gpu, media, ui, v8, weblayer]
-      fail-fast: false  # Không hủy tất cả job nếu một job fail
+      fail-fast: false  # Nếu một job fail, các job khác vẫn tiếp tục chạy
 
     steps:
       - name: Checkout source
@@ -54,12 +54,65 @@ jobs:
           ./build/install-build-deps-android.sh
           gclient runhooks
 
+      - name: Integrate Adblock Plus (libadblockplus)
+        run: |
+          cd src
+          git clone https://github.com/adblockplus/libadblockplus.git third_party/adblockplus
+          echo 'third_party/adblockplus' >> .gitignore  # Không cần sync lại repo này
+
       - name: Generate build files
         run: |
           cd src
-          gn gen out/Default --args='target_os="android" target_cpu="arm64"'
+          gn gen out/Default --args='
+            target_os="android"
+            target_cpu="arm64"
+            enable_extensions=true
+            enable_declarative_net_request_api=true
+            is_component_build=false
+            use_goma=false
+          '
 
       - name: Build module - ${{ matrix.module }}
         run: |
           cd src
           ninja -C out/Default -j4 ${{ matrix.module }}
+
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Package Chromium APK
+        run: |
+          cd src
+          ninja -C out/Default chrome_public_apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chromium-Adblock-Plus
+          path: src/out/Default/apks/Chromium.apk
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Chromium-Adblock-Plus
+          path: release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/Chromium.apk
+          tag_name: v1.0.${{ github.run_number }}
+          release_name: Chromium Adblock Build v1.0.${{ github.run_number }}
+          body: "Chromium Android với hỗ trợ đầy đủ Adblock Plus và bộ lọc cá nhân."
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

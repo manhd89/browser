@@ -11,11 +11,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        module: [base, components, content, chrome, net, gpu, media, ui, v8, weblayer]
-      fail-fast: false  # Nếu một job fail, các job khác vẫn tiếp tục chạy
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -72,10 +67,27 @@ jobs:
             use_goma=false
           '
 
-      - name: Build module - ${{ matrix.module }}
-        run: |
-          cd src
-          ninja -C out/Default -j4 ${{ matrix.module }}
+      # Chạy build tuần tự thay vì song song
+      - name: Build base
+        run: cd src && ninja -C out/Default -j2 base
+      - name: Build components
+        run: cd src && ninja -C out/Default -j2 components
+      - name: Build content
+        run: cd src && ninja -C out/Default -j2 content
+      - name: Build chrome
+        run: cd src && ninja -C out/Default -j2 chrome
+      - name: Build net
+        run: cd src && ninja -C out/Default -j2 net
+      - name: Build gpu
+        run: cd src && ninja -C out/Default -j2 gpu
+      - name: Build media
+        run: cd src && ninja -C out/Default -j2 media
+      - name: Build ui
+        run: cd src && ninja -C out/Default -j2 ui
+      - name: Build v8
+        run: cd src && ninja -C out/Default -j2 v8
+      - name: Build weblayer
+        run: cd src && ninja -C out/Default -j2 weblayer
 
   package:
     needs: build
